@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Quiz (Syam Prasad) — Samas (Custom selectors + Timer toggle)</title>
+<link href="https://fonts.googleapis.com/css?family=Orbitron:700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg1:#291c6e;
+  --bg2:#00167d;
+  --panel:#12132a;
+  --accent:#2debb0;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;
+  min-height:100vh;
+  display:flex;
+  justify-content:center;
+  background: radial-gradient(circle at 10% 10%, #06104a 0%, var(--bg1) 25%, var(--bg2) 70%);
+  font-family: "Orbitron", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  color:#dfe;
+  padding:28px 12px;
+}
+.container{
+  width:720px;
+  max-width:96%;
+  border-radius:18px;
+  overflow:hidden;
+  background: linear-gradient(180deg, rgba(255,255,255,0.02) 0%, rgba(0,0,0,0.25) 100%);
+  box-shadow: 0 10px 40px rgba(0,0,0,0.45);
+  border: 1px solid rgba(255,255,255,0.03);
+}
+.header{
+  background: linear-gradient(90deg,#9b36ff 20%, #53f0d6 100%);
+  padding:22px 18px;
+  text-align:center;
+  color:#fff;
+  font-size:28px;
+  font-weight:700;
+  letter-spacing:1px;
+}
+.controls{
+  display:flex;
+  gap:12px;
+  justify-content:center;
+  align-items:center;
+  padding:14px;
+  background: linear-gradient(180deg, rgba(0,0,0,0.12), rgba(0,0,0,0.06));
+  flex-wrap:wrap;
+}
+.control-item{ display:flex; align-items:center; gap:8px; }
+.select, .small-btn, .num-input{
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.06);
+  color: #dff;
+  padding:8px 10px;
+  border-radius:8px;
+  font-weight:700;
+}
+.small-btn{
+  background: linear-gradient(90deg,#4ef1c7,#3abf8b);
+  border:none;
+  cursor:pointer;
+  padding:9px 14px;
+}
+.num-input{ width:84px; padding:8px; color:#000; background:#fff; border-radius:8px; font-weight:700; }
+
+/* panel & layout */
+.panel{
+  padding:18px;
+  position:relative;
+  /* use the panel CSS variable */
+  background: linear-gradient(180deg, rgba(5,8,30,0.6), var(--panel));
+}
+.top-row{ display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
+.qbox{
+  background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+  border-radius:14px; padding:18px; margin-top:12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+  /* use accent var for border-left */
+  border-left:6px solid var(--accent, rgba(45,235,176,0.12));
+}
+.question { font-size:20px; color:#e6fff7; margin-bottom:14px; }
+
+/* big rounded answer buttons */
+.options { display:flex; flex-direction:column; gap:14px; }
+.answer-btn{
+  display:flex; align-items:center; justify-content:center;
+  padding:18px 22px; border-radius:40px;
+  background: linear-gradient(90deg,#2f00c8,#4b2bff);
+  color:#fff; font-size:18px; font-weight:800;
+  border: 2px solid rgba(255,255,255,0.06);
+  cursor:pointer; transition: transform 140ms, box-shadow 160ms, background 160ms;
+  box-shadow: 0 6px 24px rgba(30,20,60,0.35); user-select:none;
+}
+.answer-btn:hover{ transform: translateY(-4px); }
+.answer-btn:active{ transform: translateY(-1px); }
+.answer-btn[disabled]{ opacity:0.95; cursor:default; transform:none; }
+
+/* deep color flashes */
+@keyframes flashCorrect { 0%{transform:scale(1)} 40%{transform:scale(1.02)} 100%{transform:none} }
+@keyframes flashWrong { 0%{transform:scale(1)} 40%{transform:scale(1.02)} 100%{transform:none} }
+.answer-btn.correct { background: #FFD700; border-color:#FFD700; color:#000; animation: flashCorrect 420ms ease; box-shadow:0 8px 28px rgba(255,215,0,0.16); }
+.answer-btn.incorrect { background: #B22222; border-color:#8B0000; color:#fff; animation: flashWrong 420ms ease; box-shadow:0 8px 28px rgba(178,34,34,0.12); }
+
+/* progress + counter */
+.progress-bar{ height:8px; background: rgba(255,255,255,0.03); border-radius:8px; margin:18px 0; overflow:hidden; }
+.progress{ height:100%; width:0%; background: linear-gradient(90deg,#3a1bff,#5ec0ff); transition:width 200ms; }
+.counter{ text-align:center; color: #9fffe7; font-weight:700; padding:6px; margin-top:6px; }
+
+.footer{ padding:20px; height:56px; }
+
+/* responsive */
+@media (max-width:560px){
+  .answer-btn{ font-size:16px; padding:14px; border-radius:28px; }
+  .header{ font-size:20px; padding:16px; }
+  .num-input{ width:64px; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">QUIZ (SYAM PRASAD)</div>
+
+  <div class="controls">
+    <div class="control-item">
+      <label style="font-weight:700">Choices:</label>
+      <select id="choiceSelect" class="select"></select>
+      <input id="choiceCustom" class="num-input" type="number" placeholder="Custom" style="display:none;" min="1" />
+    </div>
+
+    <div class="control-item">
+      <label style="font-weight:700">Questions:</label>
+      <select id="countSelect" class="select"></select>
+      <input id="countCustom" class="num-input" type="number" placeholder="Custom" style="display:none;" min="1" />
+    </div>
+
+    <div class="control-item">
+      <label style="font-weight:700">Time (s):</label>
+      <select id="timeSelect" class="select"></select>
+      <input id="timeCustom" class="num-input" type="number" placeholder="Seconds" style="display:none;" min="0" />
+    </div>
+
+    <div class="control-item">
+      <label style="font-weight:700">
+        <input id="timerEnable" type="checkbox" style="transform:scale(1.2); margin-right:8px;" />
+        Enable Timer
+      </label>
+    </div>
+
+    <!-- Theme dropdown -->
+    <div class="control-item">
+      <label style="font-weight:700">Theme:</label>
+      <select id="themeSelect" class="select"></select>
+    </div>
+
+    <div class="control-item">
+      <button id="startBtn" class="small-btn">Start / Restart</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="top-row">
+      <div style="width:72%">
+        <div class="qbox">
+          <div id="quiz"><!-- injected --></div>
+        </div>
+      </div>
+      <div style="width:26%; padding-left:12px; text-align:right;">
+        <div style="color:#9fffe7; font-weight:700; margin-top:8px;">Time Left: <span id="timer">--:--</span></div>
+        <div style="height:8px"></div>
+        <div class="progress-bar"><div id="progress" class="progress"></div></div>
+        <div class="counter" id="counter">Question 0 of 0</div>
+      </div>
+    </div>
+
+    <div class="footer"></div>
+  </div>
+</div>
+
+<script>
+/* ------------------------
+   Questions dataset
+   ------------------------ */
+const questions = [
+  {
+    "question": "लड़के खेल रहे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["लड़का खेल रहा है।", "लड़के खेल रहा है।", "लड़का खेल रहे हैं।"],
+    "answer": "लड़का खेल रहा है।"
+  },
+  {
+    "question": "लड़कियाँ गा रही हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["लड़की गा रही है।", "लड़कियाँ गा रहा है।", "लड़का गा रही है।"],
+    "answer": "लड़की गा रही है।"
+  },
+  {
+    "question": "शिक्षक कक्षा में पढ़ा रहे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["शिक्षक कक्षा में पढ़ा रहा है।", "शिक्षक कक्षा में पढ़ा रहे हैं।", "शिक्षक कक्षा में पढ़ा रही है।"],
+    "answer": "शिक्षक कक्षा में पढ़ा रहा है।"
+  },
+  {
+    "question": "बच्चे सो रहे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["बच्चा सो रहा है।", "बच्चे सो रहा है।", "बच्चा सो रहे हैं।"],
+    "answer": "बच्चा सो रहा है।"
+  },
+  {
+    "question": "महिलाएँ बाजार जा रही हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["महिला बाजार जा रही है।", "महिलाएँ बाजार जा रहा है।", "महिला बाजार जा रहे हैं।"],
+    "answer": "महिला बाजार जा रही है।"
+  },
+  {
+    "question": "किसान खेत में काम कर रहे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["किसान खेत में काम कर रहा है।", "किसान खेत में काम कर रहे हैं।", "किसान खेत में काम कर रही है।"],
+    "answer": "किसान खेत में काम कर रहा है।"
+  },
+  {
+    "question": "सेब टोकरी में रखे गए हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["सेब टोकरी में रखा गया है।", "सेब टोकरी में रखे गया है।", "सेब टोकरी में रखे गए है।"],
+    "answer": "सेब टोकरी में रखा गया है।"
+  },
+  {
+    "question": "पक्षी आसमान में उड़ रहे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["पक्षी आसमान में उड़ रहा है।", "पक्षी आसमान में उड़ रहे है।", "पक्षी आसमान में उड़ रही है।"],
+    "answer": "पक्षी आसमान में उड़ रहा है।"
+  },
+  {
+    "question": "लड़कियाँ नाच रही हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["लड़की नाच रही है।", "लड़कियाँ नाच रहा है।", "लड़की नाच रहे हैं।"],
+    "answer": "लड़की नाच रही है।"
+  },
+  {
+    "question": "कुत्ते पार्क में दौड़ रहे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["कुत्ता पार्क में दौड़ रहा है।", "कुत्ते पार्क में दौड़ रहा है।", "कुत्ता पार्क में दौड़ रहे हैं।"],
+    "answer": "कुत्ता पार्क में दौड़ रहा है।"
+  },
+  {
+    "question": "बिल्लियाँ दूध पी रही हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["बिल्ली दूध पी रही है।", "बिल्लियाँ दूध पी रहा है।", "बिल्ली दूध पी रहे हैं।"],
+    "answer": "बिल्ली दूध पी रही है।"
+  },
+  {
+    "question": "फूल बगीचे में खिले हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["फूल बगीचे में खिला है।", "फूल बगीचे में खिले है।", "फूल बगीचे में खिला हैं।"],
+    "answer": "फूल बगीचे में खिला है।"
+  },
+  {
+    "question": "किताबें मेज पर रखी हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["किताब मेज पर रखी है।", "किताबें मेज पर रखा है।", "किताब मेज पर रखे हैं।"],
+    "answer": "किताब मेज पर रखी है।"
+  },
+  {
+    "question": "मछलियाँ तालाब में तैर रही हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["मछली तालाब में तैर रही है।", "मछलियाँ तालाब में तैर रहा है।", "मछली तालाब में तैर रहे हैं।"],
+    "answer": "मछली तालाब में तैर रही है।"
+  },
+  {
+    "question": "छात्र लाइब्रेरी में पढ़ रहे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["छात्र लाइब्रेरी में पढ़ रहा है।", "छात्र लाइब्रेरी में पढ़ रहे है।", "छात्रा लाइब्रेरी में पढ़ रही है।"],
+    "answer": "छात्र लाइब्रेरी में पढ़ रहा है।"
+  },
+  {
+    "question": "बच्चियाँ पार्क में खेल रही हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["बच्ची पार्क में खेल रही है।", "बच्चियाँ पार्क में खेल रहा है।", "बच्ची पार्क में खेल रहे हैं।"],
+    "answer": "बच्ची पार्क में खेल रही है।"
+  },
+  {
+    "question": "डाकिए पत्र वितरित कर रहे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["डाकिया पत्र वितरित कर रहा है।", "डाकिए पत्र वितरित कर रहा है।", "डाकिया पत्र वितरित कर रहे हैं।"],
+    "answer": "डाकिया पत्र वितरित कर रहा है।"
+  },
+  {
+    "question": "कमरे में कुर्सियाँ रखी हुई हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["कमरे में कुर्सी रखी हुई है।", "कमरे में कुर्सियाँ रखी हुई है।", "कमरे में कुर्सी रखी हुई हैं।"],
+    "answer": "कमरे में कुर्सी रखी हुई है।"
+  },
+  {
+    "question": "लड़के आवाज़ लगा रहे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["लड़का आवाज़ लगा रहा है।", "लड़के आवाज़ लगा रहा है।", "लड़का आवाज़ लगा रहे हैं।"],
+    "answer": "लड़का आवाज़ लगा रहा है।"
+  },
+  {
+    "question": "महिलाएँ खाना बना रही हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["महिला खाना बना रही है।", "महिलाएँ खाना बना रहा है।", "महिला खाना बना रहे हैं।"],
+    "answer": "महिला खाना बना रही है।"
+  },
+  {
+    "question": "कुत्ते भौंक रहे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["कुत्ता भौंक रहा है।", "कुत्ते भौंक रहा है।", "कुत्ता भौंक रहे हैं।"],
+    "answer": "कुत्ता भौंक रहा है।"
+  },
+  {
+    "question": "बच्चे दूध पी रहे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["बच्चा दूध पी रहा है।", "बच्चे दूध पी रहा है।", "बच्चा दूध पी रहे हैं।"],
+    "answer": "बच्चा दूध पी रहा है।"
+  },
+  {
+    "question": "घोड़े खेत में दौड़ रहे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["घोड़ा खेत में दौड़ रहा है।", "घोड़े खेत में दौड़ रहा है।", "घोड़ा खेत में दौड़ रहे हैं।"],
+    "answer": "घोड़ा खेत में दौड़ रहा है।"
+  },
+  {
+    "question": "चिड़ियाँ घोंसला बना रही हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["चिड़िया घोंसला बना रही है।", "चिड़ियाँ घोंसला बना रहा है।", "चिड़िया घोंसला बना रहे हैं।"],
+    "answer": "चिड़िया घोंसला बना रही है।"
+  },
+  {
+    "question": "छात्राएँ पुरस्कार जीत रही हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["छात्रा पुरस्कार जीत रही है।", "छात्राएँ पुरस्कार जीत रहा है।", "छात्रा पुरस्कार जीत रहे हैं।"],
+    "answer": "छात्रा पुरस्कार जीत रही है।"
+  },
+  {
+    "question": "कप्तान नाव चला रहे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["कप्तान नाव चला रहा है।", "कप्तान नाव चला रहे है।", "कप्तान नाव चला रही है।"],
+    "answer": "कप्तान नाव चला रहा है।"
+  },
+  {
+    "question": "मछलियाँ नदी में तैर रही हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["मछली नदी में तैर रही है।", "मछलियाँ नदी में तैर रहा है।", "मछली नदी में तैर रहे हैं।"],
+    "answer": "मछली नदी में तैर रही है।"
+  },
+  {
+    "question": "बच्चे पहाड़ पर चढ़ रहे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["बच्चा पहाड़ पर चढ़ रहा है।", "बच्चे पहाड़ पर चढ़ रहा है।", "बच्चा पहाड़ पर चढ़ रहे हैं।"],
+    "answer": "बच्चा पहाड़ पर चढ़ रहा है।"
+  },
+  {
+    "question": "मच्छर कमरे में उड़ रहे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["मच्छर कमरे में उड़ रहा है।", "मच्छर कमरे में उड़ रहे है।", "मच्छर कमरे में उड़ रही है।"],
+    "answer": "मच्छर कमरे में उड़ रहा है।"
+  },
+  {
+    "question": "काँच टूटे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["काँच टूटा है।", "काँच टूटे है।", "काँच टूटी हैं।"],
+    "answer": "काँच टूटा है।"
+  },
+  {
+    "question": "घड़ियाँ समय दिखा रही हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["घड़ी समय दिखा रही है।", "घड़ियाँ समय दिखा रहा है।", "घड़ी समय दिखा रहे हैं।"],
+    "answer": "घड़ी समय दिखा रही है।"
+  },
+  {
+    "question": "दरवाजे बंद हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["दरवाजा बंद है।", "दरवाजे बंद है।", "दरवाजा बंद हैं।"],
+    "answer": "दरवाजा बंद है।"
+  },
+  {
+    "question": "कपड़े धोए गए हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["कपड़ा धोया गया है।", "कपड़े धोया गया है।", "कपड़ा धोए गए हैं।"],
+    "answer": "कपड़ा धोया गया है।"
+  },
+  {
+    "question": "पत्थर किनारे रखे गए हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["पत्थर किनारे रखा गया है।", "पत्थर किनारे रखे रखा गया है।", "पत्थर किनारे रखा गए हैं।"],
+    "answer": "पत्थर किनारे रखा गया है।"
+  },
+  {
+    "question": "गाड़ियाँ रास्ते पर खड़ी हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["गाड़ी रास्ते पर खड़ी है।", "गाड़ियाँ रास्ते पर खड़ी है।", "गाड़ी रास्ते पर खड़े हैं।"],
+    "answer": "गाड़ी रास्ते पर खड़ी है।"
+  },
+  {
+    "question": "बच्चे पढ़ाई कर रहे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["बच्चा पढ़ाई कर रहा है।", "बच्चे पढ़ाई कर रहा है।", "बच्चा पढ़ाई कर रहे हैं।"],
+    "answer": "बच्चा पढ़ाई कर रहा है।"
+  },
+  {
+    "question": "फल टोकरी में रखे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["फल टोकरी में रखा है।", "फल टोकरी में रखे है।", "फल टोकरी में रखा हैं।"],
+    "answer": "फल टोकरी में रखा है।"
+  },
+  {
+    "question": "बिल्डिंगों की खिड़कियाँ बंद हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["बिल्डिंग की खिड़की बंद है।", "बिल्डिंगों की खिड़की बंद है।", "बिल्डिंग की खिड़कियाँ बंद है।"],
+    "answer": "बिल्डिंग की खिड़की बंद है।"
+  },
+  {
+    "question": "नौकर खाना परोस रहे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["नौकर खाना परोस रहा है।", "नौकर खाना परोस रहे है।", "नौकर खाना परोस रही है।"],
+    "answer": "नौकर खाना परोस रहा है।"
+  },
+  {
+    "question": "मज़दूर ईंटें लगा रहे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["मज़दूर ईंटें लगा रहा है।", "मज़दूर ईंटें लगा रहे है।", "मज़दूर ईंटें लगा रही है।"],
+    "answer": "मज़दूर ईंटें लगा रहा है।"
+  },
+  {
+    "question": "किसानों के ट्रैक्टर खेतों में खड़े हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["किसान का ट्रैक्टर खेत में खड़ा है।", "किसानों का ट्रैक्टर खेत में खड़े हैं।", "किसान का ट्रैक्टर खेत में खड़े हैं।"],
+    "answer": "किसान का ट्रैक्टर खेत में खड़ा है।"
+  },
+  {
+    "question": "मक्खियाँ फल पर बैठी हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["मक्खी फल पर बैठी है।", "मक्खियाँ फल पर बैठी है।", "मक्खी फल पर बैठी हैं।"],
+    "answer": "मक्खी फल पर बैठी है।"
+  },
+  {
+    "question": "बच्चे उपहार खोल रहे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["बच्चा उपहार खोल रहा है।", "बच्चे उपहार खोल रहा है।", "बच्चा उपहार खोल रहे हैं।"],
+    "answer": "बच्चा उपहार खोल रहा है।"
+  },
+  {
+    "question": "शेर मैदान में दहाड़ रहे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["शेर मैदान में दहाड़ रहा है।", "शेर मैदान में दहाड़ रहे है।", "शेर मैदान में दहाड़ रही है।"],
+    "answer": "शेर मैदान में दहाड़ रहा है।"
+  },
+  {
+    "question": "लड़कियाँ तैयारी कर रही हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["लड़की तैयारी कर रही है।", "लड़कियाँ तैयारी कर रहा है।", "लड़की तैयारी कर रहे हैं।"],
+    "answer": "लड़की तैयारी कर रही है।"
+  },
+  {
+    "question": "पेड़ फल दे रहे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["पेड़ फल दे रहा है।", "पेड़ फल दे रहे है।", "पेड़ फल दे रही है।"],
+    "answer": "पेड़ फल दे रहा है।"
+  },
+  {
+    "question": "लड़के लाइन में खड़े हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["लड़का लाइन में खड़ा है।", "लड़के लाइन में खड़ा है।", "लड़का लाइन में खड़े हैं।"],
+    "answer": "लड़का लाइन में खड़ा है।"
+  },
+  {
+    "question": "माता-पिता स्कूल आ रहे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["माता-पिता स्कूल आ रहा है।", "माता या पिता स्कूल आ रहा है।", "माता-पिता में से एक स्कूल आ रहा है।"],
+    "answer": "माता या पिता स्कूल आ रहा है।"
+  },
+  {
+    "question": "चाबी दरवाजे पर रखी हुई है। (वचन बदलकर बहुवचन) वचन बदलने से क्या बनेगा?",
+    "options": ["चाबियाँ दरवाजे पर रखी हुई हैं।", "चाबी दरवाजे पर रखी हुई हैं।", "चाबियाँ दरवाजे पर रखा हुआ है।"],
+    "answer": "चाबियाँ दरवाजे पर रखी हुई हैं।"
+  },
+  {
+    "question": "बच्चे तैराकी कर रहे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["बच्चा तैराकी कर रहा है।", "बच्चे तैराकी कर रहा है।", "बच्चा तैराकी कर रहे हैं।"],
+    "answer": "बच्चा तैराकी कर रहा है।"
+  },
+  {
+    "question": "दुकानदार सब्जियाँ बेच रहे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["दुकानदार सब्जियाँ बेच रहा है।", "दुकानदार सब्जियाँ बेच रहे हैं।", "दुकानदार सब्जियाँ बेच रही है।"],
+    "answer": "दुकानदार सब्जियाँ बेच रहा है।"
+  },
+  {
+    "question": "काँटा मेज पर रखे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["काँटा मेज पर रखा है।", "काँटा मेज पर रखे है।", "काँटा मेज पर रखे हैं।"],
+    "answer": "काँटा मेज पर रखा है।"
+  },
+  {
+    "question": "खिलौने अलमारी में रखे गए हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["खिलौना अलमारी में रखा गया है।", "खिलौने अलमारी में रखा गया है।", "खिलौना अलमारी में रखे गए है।"],
+    "answer": "खिलौना अलमारी में रखा गया है।"
+  },
+  {
+    "question": "लोग ट्रेन की प्रतीक्षा कर रहे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["व्यक्ति ट्रेन की प्रतीक्षा कर रहा है।", "लोग ट्रेन की प्रतीक्षा कर रहा है।", "व्यक्ति ट्रेन की प्रतीक्षा कर रहे हैं।"],
+    "answer": "व्यक्ति ट्रेन की प्रतीक्षा कर रहा है।"
+  },
+  {
+    "question": "खुले आसमान में बादल छाए हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["आसमान में बादल छाया है।", "आसमान में बादल छाए है।", "आसमान में बादल छाए हैं।"],
+    "answer": "आसमान में बादल छाया है।"
+  },
+  {
+    "question": "पक्षियों की चहचहाहट सुनाई दे रही है। (वचन बदलकर बहुवचन) वचन बदलने से क्या बनेगा?",
+    "options": ["पक्षियों की चहचहाहट सुनाई दे रहीं हैं।", "पक्षियों की चहचहाहट सुनाई दे रहा है।", "पक्षियों की चहचहाहट सुनाई दे रही है।"],
+    "answer": "पक्षियों की चहचहाहट सुनाई दे रही है।"
+  },
+  {
+    "question": "कुत्ते अपनी पूँछ हिला रहे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["कुत्ता अपनी पूँछ हिला रहा है।", "कुत्ते अपनी पूँछ हिला रहा है।", "कुत्ता अपनी पूँछ हिला रहे हैं।"],
+    "answer": "कुत्ता अपनी पूँछ हिला रहा है।"
+  },
+  {
+    "question": "पेड़ की शाखाएँ हिल रही हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["पेड़ की शाखा हिल रही है।", "पेड़ की शाखाएँ हिल रहा है।", "पेड़ की शाखा हिल रहे हैं।"],
+    "answer": "पेड़ की शाखा हिल रही है।"
+  },
+  {
+    "question": "बच्चे किताबें पढ़ रहे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["बच्चा किताब पढ़ रहा है।", "बच्चे किताब पढ़ रहा है।", "बच्चा किताब पढ़ रहे हैं।"],
+    "answer": "बच्चा किताब पढ़ रहा है।"
+  },
+  {
+    "question": "कौवे पेड़ पर बैठे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["कौआ पेड़ पर बैठा है।", "कौवे पेड़ पर बैठा है।", "कौआ पेड़ पर बैठे हैं।"],
+    "answer": "कौआ पेड़ पर बैठा है।"
+  },
+  {
+    "question": "छात्र प्रश्न पूछ रहे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["छात्र प्रश्न पूछ रहा है।", "छात्र प्रश्न पूछ रहे है।", "छात्रा प्रश्न पूछ रही है।"],
+    "answer": "छात्र प्रश्न पूछ रहा है।"
+  },
+  {
+    "question": "लड़के मिठाई खा रहे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["लड़का मिठाई खा रहा है।", "लड़के मिठाई खा रहा है।", "लड़का मिठाई खा रहे हैं।"],
+    "answer": "लड़का मिठाई खा रहा है।"
+  },
+  {
+    "question": "नौकायन विहार नावें झील में तैर रही हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["नौका झील में तैर रही है।", "नौकायन विहार नाव झील में तैर रही है।", "नौका झील में तैर रहे हैं।"],
+    "answer": "नौका झील में तैर रही है।"
+  },
+  {
+    "question": "बाग में टहनियाँ टूटी पड़ी हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["बाग में टहनी टूटी पड़ी है।", "बाग में टहनियाँ टूटी पड़ी है।", "बाग में टहनी टूटी पड़ी हैं।"],
+    "answer": "बाग में टहनी टूटी पड़ी है।"
+  },
+  {
+    "question": "झूले बच्चों को खुश कर रहे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["झूला बच्चे को खुश कर रहा है।", "झूले बच्चे को खुश कर रहा है।", "झूला बच्चे को खुश कर रहे हैं।"],
+    "answer": "झूला बच्चे को खुश कर रहा है।"
+  },
+  {
+    "question": "मछलियों की निराली कतार तालाब में है। (वचन बदलकर एकवचन) वचन बदलने से क्या बनेगा?",
+    "options": ["मछली की कतार तालाब में है।", "मछलियों की कतार तालाब में है।", "मछली की कतार तालाब में हैं।"],
+    "answer": "मछली की कतार तालाब में है।"
+  },
+  {
+    "question": "छात्र खेलों में भाग ले रहे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["छात्र खेल में भाग ले रहा है।", "छात्र खेलों में भाग ले रहा है।", "छात्र खेल में भाग ले रहे हैं।"],
+    "answer": "छात्र खेल में भाग ले रहा है।"
+  },
+  {
+    "question": "माचिसें टेबिल पर रखी हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["माचिस टेबल पर रखी है।", "माचिसें टेबल पर रखा है।", "माचिस टेबल पर रखे हैं।"],
+    "answer": "माचिस टेबल पर रखी है।"
+  },
+  {
+    "question": "शेफ रसोई में व्यंजन बना रहे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["शेफ रसोई में व्यंजन बना रहा है।", "शेफ रसोई में व्यंजन बना रहे है।", "शेफ रसोई में व्यंजन बना रही है।"],
+    "answer": "शेफ रसोई में व्यंजन बना रहा है।"
+  },
+  {
+    "question": "कूलर कमरे में हवा दे रहे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["कूलर कमरे में हवा दे रहा है।", "कूलर कमरे में हवा दे रहे है।", "कूलर कमरे में हवा दे रही है।"],
+    "answer": "कूलर कमरे में हवा दे रहा है।"
+  },
+  {
+    "question": "बच्चे सहयता मांग रहे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["बच्चा सहायता माँग रहा है।", "बच्चे सहायता माँग रहा है।", "बच्चा सहायता माँग रहे हैं।"],
+    "answer": "बच्चा सहायता माँग रहा है।"
+  },
+  {
+    "question": "बत्तियाँ कमरे में जल रही हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["बत्ती कमरे में जल रही है।", "बत्तियाँ कमरे में जल रहा है।", "बत्ती कमरे में जल रहे हैं।"],
+    "answer": "बत्ती कमरे में जल रही है।"
+  },
+  {
+    "question": "गायें खेत में घास खा रही हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["गाय खेत में घास खा रही है।", "गायें खेत में घास खा रहा है।", "गाय खेत में घास खा रहे हैं।"],
+    "answer": "गाय खेत में घास खा रही है।"
+  },
+  {
+    "question": "बच्चे स्कूल जा रहे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["बच्चा स्कूल जा रहा है।", "बच्चे स्कूल जा रहा है।", "बच्चा स्कूल जा रहे हैं।"],
+    "answer": "बच्चा स्कूल जा रहा है।"
+  },
+  {
+    "question": "डॉक्टर मरीजों का इलाज कर रहे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["डॉक्टर मरीज का इलाज कर रहा है।", "डॉक्टर मरीजों का इलाज कर रहा है।", "डॉक्टर मरीज का इलाज कर रहे हैं।"],
+    "answer": "डॉक्टर मरीज का इलाज कर रहा है।"
+  },
+  {
+    "question": "कुर्सियाँ मेज के चारों ओर रखी हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["कुर्सी मेज के चारों ओर रखी है।", "कुर्सियाँ मेज के चारों ओर रखी है।", "कुर्सी मेज के चारों ओर रखी हैं।"],
+    "answer": "कुर्सी मेज के चारों ओर रखी है।"
+  },
+  {
+    "question": "बच्चे फ़रिश्टे की तरह नाच रहे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["बच्चा फ़रिश्ते की तरह नाच रहा है।", "बच्चे फ़रिश्ते की तरह नाच रहा है।", "बच्चा फ़रिश्ते की तरह नाच रहे हैं।"],
+    "answer": "बच्चा फ़रिश्ते की तरह नाच रहा है।"
+  },
+  {
+    "question": "पालक बग़ीचे में उगे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["पालक बगीचे में उगा है।", "पालक बग़ीचे में उगा है।", "पालक बगीचे में उगे है।"],
+    "answer": "पालक बगीचे में उगा है।"
+  },
+  {
+    "question": "गिलास पानी से भरे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["गिलास पानी से भरा है।", "गिलास पानी से भरे है।", "गिलास पानी से भरा हैं।"],
+    "answer": "गिलास पानी से भरा है।"
+  },
+  {
+    "question": "बच्चे पत्र लिख रहे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["बच्चा पत्र लिख रहा है।", "बच्चे पत्र लिख रहा है।", "बच्चा पत्र लिख रहे हैं।"],
+    "answer": "बच्चा पत्र लिख रहा है।"
+  },
+  {
+    "question": "तरबूज टोकरी में रखे गए हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["तरबूज टोकरी में रखा गया है।", "तरबूज टोकरी में रखे गया है।", "तरबूज टोकरी में रखा गए हैं।"],
+    "answer": "तरबूज टोकरी में रखा गया है।"
+  },
+  {
+    "question": "कुत्ते घर के बाहर सो रहे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["कुत्ता घर के बाहर सो रहा है।", "कुत्ते घर के बाहर सो रहा है।", "कुत्ता घर के बाहर सो रहे हैं।"],
+    "answer": "कुत्ता घर के बाहर सो रहा है।"
+  },
+  {
+    "question": "बच्चे अपने कार्य कर रहे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["बच्चा अपना कार्य कर रहा है।", "बच्चे अपना कार्य कर रहा है।", "बच्चा अपना कार्य कर रहे हैं।"],
+    "answer": "बच्चा अपना कार्य कर रहा है।"
+  },
+  {
+    "question": "कविताएँ किताबों में लिखी हुई हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["कविता किताब में लिखी हुई है।", "कविताएँ किताब में लिखी हुई है।", "कविता किताबों में लिखी हुई है।"],
+    "answer": "कविता किताब में लिखी हुई है।"
+  },
+  {
+    "question": "बत्तियाँ सड़क के किनारे जल रही हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["बत्ती सड़क के किनारे जल रही है।", "बत्तियाँ सड़क के किनारे जल रहा है।", "बत्ती सड़क के किनारे जल रहे हैं।"],
+    "answer": "बत्ती सड़क के किनारे जल रही है।"
+  },
+  {
+    "question": "कुतरने वाले चूहे चीज़े खा रहे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["कुतरा चूहा चीज़ खा रहा है।", "कुतरने वाला चूहा चीज़ खा रहा है।", "कुतरने वाले चूहे चीज़ खा रहा है।"],
+    "answer": "कुतरने वाला चूहा चीज़ खा रहा है।"
+  },
+  {
+    "question": "बच्चे चित्र बना रहे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["बच्चा चित्र बना रहा है।", "बच्चे चित्र बना रहा है।", "बच्चा चित्र बना रहे हैं।"],
+    "answer": "बच्चा चित्र बना रहा है।"
+  },
+  {
+    "question": "रेखा और सीमा मिठाई खा रही हैं। (वचन बदलकर एकवचन) वचन बदलने से क्या बनेगा?",
+    "options": ["रेखा मिठाई खा रही है।", "रेखा और सीमा मिठाई खा रहा है।", "रेखा मिठाई खा रहे हैं।"],
+    "answer": "रेखा मिठाई खा रही है।"
+  },
+  {
+    "question": "काँच की बोतलें अलमारी में रखी हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["काँच की बोतल अलमारी में रखी है।", "काँच की बोतलें अलमारी में रखी है।", "काँच की बोतल अलमारी में रखी हैं।"],
+    "answer": "काँच की बोतल अलमारी में रखी है।"
+  },
+  {
+    "question": "बच्चे संगीत सुन रहे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["बच्चा संगीत सुन रहा है।", "बच्चे संगीत सुन रहा है।", "बच्चा संगीत सुन रहे हैं।"],
+    "answer": "बच्चा संगीत सुन रहा है।"
+  },
+  {
+    "question": "पक्षियों के पर सफेद हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["पक्षी का पर सफेद है।", "पक्षियों का पर सफेद है।", "पक्षी का पर सफेद हैं।"],
+    "answer": "पक्षी का पर सफेद है।"
+  },
+  {
+    "question": "बच्चे झूला झूल रहे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["बच्चा झूला झूल रहा है।", "बच्चे झूला झूल रहा है।", "बच्चा झूला झूल रहे हैं।"],
+    "answer": "बच्चा झूला झूल रहा है।"
+  },
+  {
+    "question": "खिड़कियाँ खुली हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["खिड़की खुली है।", "खिड़कियाँ खुली है।", "खिड़की खुली हैं।"],
+    "answer": "खिड़की खुली है।"
+  },
+  {
+    "question": "पेड़ पत्ते छोड़ रहे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["पेड़ पत्ता छोड़ रहा है।", "पेड़ पत्ते छोड़ रहा है।", "पेड़ पत्ता छोड़ रहे हैं।"],
+    "answer": "पेड़ पत्ता छोड़ रहा है।"
+  },
+  {
+    "question": "कुत्ते अपने बच्चों की रक्षा कर रहे हैं। वचन बदलने से क्या बनेगा?",
+    "options": ["कुत्ता अपने बच्चे की रक्षा कर रहा है।", "कुत्ते अपने बच्चे की रक्षा कर रहा है।", "कुत्ता अपने बच्चे की रक्षा कर रहे हैं।"],
+    "answer": "कुत्ता अपने बच्चे की रक्षा कर रहा है।"
+  }
+  ];
+
+/* ------------------------
+   UI refs & defaults
+   ------------------------ */
+const choiceSelect = document.getElementById('choiceSelect');
+const countSelect = document.getElementById('countSelect');
+const timeSelect = document.getElementById('timeSelect');
+const choiceCustom = document.getElementById('choiceCustom');
+const countCustom = document.getElementById('countCustom');
+const timeCustom = document.getElementById('timeCustom');
+const timerEnable = document.getElementById('timerEnable');
+const startBtn = document.getElementById('startBtn');
+const quizDiv = document.getElementById('quiz');
+const progressBar = document.getElementById('progress');
+const counterEl = document.getElementById('counter');
+const timerEl = document.getElementById('timer');
+
+const SETTINGS_KEY = 'samas_custom_settings_with_timer_v1';
+const defaults = { choices: 4, count: Math.min(24, questions.length), time: 180, timerEnabled: true };
+
+/* fill select options */
+[3,4,5,6,'Custom'].forEach(v => {
+  const o = document.createElement('option'); o.value = v; o.textContent = v; choiceSelect.appendChild(o);
+});
+[10,24,50,75,'All','Custom'].forEach(v => {
+  const o = document.createElement('option'); o.value = v; o.textContent = v; countSelect.appendChild(o);
+});
+[0,60,120,180,300,600,'Custom'].forEach(v => {
+  const o = document.createElement('option'); o.value = v; o.textContent = v; timeSelect.appendChild(o);
+});
+
+/* load saved settings */
+let saved = localStorage.getItem(SETTINGS_KEY);
+let settings = saved ? JSON.parse(saved) : defaults;
+
+/* set UI from settings */
+function applySettingsToUI(){
+  if ([3,4,5,6].includes(settings.choices)) {
+    choiceSelect.value = settings.choices; choiceCustom.style.display = 'none';
+  } else { choiceSelect.value = 'Custom'; choiceCustom.style.display = ''; choiceCustom.value = settings.choices; }
+  if ([10,24,50,75].includes(settings.count)) {
+    countSelect.value = settings.count; countCustom.style.display = 'none';
+  } else if (settings.count === questions.length) {
+    countSelect.value = 'All'; countCustom.style.display = 'none';
+  } else { countSelect.value = 'Custom'; countCustom.style.display = ''; countCustom.value = settings.count; }
+  if ([0,60,120,180,300,600].includes(settings.time)) {
+    timeSelect.value = settings.time; timeCustom.style.display = 'none';
+  } else { timeSelect.value = 'Custom'; timeCustom.style.display = ''; timeCustom.value = settings.time; }
+  timerEnable.checked = !!settings.timerEnabled;
+}
+applySettingsToUI();
+
+/* events for selectors */
+let selectsDirty = false;
+choiceSelect.addEventListener('change', () => { selectsDirty = true; if (choiceSelect.value === 'Custom') choiceCustom.style.display=''; else choiceCustom.style.display='none'; });
+countSelect.addEventListener('change', () => { selectsDirty = true; if (countSelect.value === 'Custom') countCustom.style.display=''; else countCustom.style.display='none'; });
+timeSelect.addEventListener('change', () => { selectsDirty = true; if (timeSelect.value === 'Custom') timeCustom.style.display=''; else timeCustom.style.display='none'; });
+timerEnable.addEventListener('change', () => { selectsDirty = true; });
+
+/* helpers */
+function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]];} return a; }
+function sampleOptions(baseOptions, correct, n){ const pool=baseOptions.filter(x=>x!==correct); shuffle(pool); const chosen=pool.slice(0,n-1); chosen.push(correct); return shuffle(chosen); }
+
+/* quiz state */
+let currentSet=[], idx=0, userAnswers=[], timerInterval=null;
+let quizEnded = false; // prevent race conditions
+
+/* read UI values */
+function readUIValues(){
+  let choicesVal = (choiceSelect.value==='Custom') ? parseInt(choiceCustom.value,10)||defaults.choices : parseInt(choiceSelect.value,10);
+  let countVal;
+  if (countSelect.value==='Custom') countVal=parseInt(countCustom.value,10)||Math.min(24,questions.length);
+  else if (countSelect.value==='All') countVal=questions.length;
+  else countVal=parseInt(countSelect.value,10);
+  let timeVal=(timeSelect.value==='Custom')?parseInt(timeCustom.value,10)||0:parseInt(timeSelect.value,10);
+  return { choices:Math.max(2,choicesVal), count:Math.min(Math.max(1,countVal),questions.length), time:Math.max(0,timeVal) };
+}
+
+/* timer */
+
+function startTimer(sec){ 
+  if (timerInterval) clearInterval(timerInterval); 
+  if (!sec || sec <= 0){ 
+    timerEl.textContent='--:--'; 
+    return;
+  } 
+  let remaining = sec; 
+  timerEl.textContent = formatTime(remaining); 
+
+  timerInterval = setInterval(() => { 
+    remaining--; 
+    if (remaining <= 0){ 
+      clearInterval(timerInterval); 
+      timerEl.textContent = '00:00'; 
+      // ⬇️ Force quiz to stop and show results immediately
+      quizEnded = true; // mark quiz ended before showing results
+      showResults();
+    } else { 
+      timerEl.textContent = formatTime(remaining); 
+    } 
+  }, 1000); 
+}
+function formatTime(s){ const m=Math.floor(s/60); const r=s%60; return `${String(m).padStart(2,'0')}:${String(r).padStart(2,'0')}`; }
+
+/* start quiz */
+function startQuiz(){
+  const vals=readUIValues(); settings={choices:vals.choices,count:vals.count,time:vals.time,timerEnabled:!!timerEnable.checked}; localStorage.setItem(SETTINGS_KEY,JSON.stringify(settings)); selectsDirty=false;
+  const pool=JSON.parse(JSON.stringify(questions)); shuffle(pool);
+  currentSet=pool.slice(0,Math.min(settings.count,pool.length)).map(q=>({question:q.question, options:sampleOptions(q.options,q.answer,Math.min(settings.choices,q.options.length)), answer:q.answer}));
+  idx=0; userAnswers=new Array(currentSet.length).fill(null);
+  quizEnded = false; // reset flag
+  if(settings.timerEnabled&&settings.time>0) startTimer(settings.time); else startTimer(0);
+  renderQuestion();
+}
+function renderQuestion(){ if(!currentSet.length){ quizDiv.innerHTML='<div style="padding:18px;color:#bfe">Press Start to begin</div>'; return;} const q=currentSet[idx]; quizDiv.innerHTML=''; const qText=document.createElement('div'); qText.className='question'; qText.textContent=`${idx+1}. ${q.question}`; quizDiv.appendChild(qText); const optsWrap=document.createElement('div'); optsWrap.className='options'; q.options.forEach(opt=>{ const btn=document.createElement('button'); btn.className='answer-btn'; btn.type='button'; btn.dataset.value=opt; btn.textContent=opt; btn.addEventListener('click',()=>handleAnswer(q,opt,btn)); optsWrap.appendChild(btn); }); quizDiv.appendChild(optsWrap); updateProgress();}
+function handleAnswer(qObj,chosen,chosenBtn){ const buttons=Array.from(quizDiv.querySelectorAll('.answer-btn')); buttons.forEach(b=>b.disabled=true); buttons.forEach(b=>{ if(b.dataset.value===qObj.answer) b.classList.add('correct'); if(b.dataset.value===chosen&&chosen!==qObj.answer) b.classList.add('incorrect'); }); userAnswers[idx]=chosen; setTimeout(()=>{ if(quizEnded) return; if(idx<currentSet.length-1){ idx++; renderQuestion(); } else showResults(); },450);}
+function updateProgress(){ const pct=Math.round(((idx)/(Math.max(1,currentSet.length-1)))*100); progressBar.style.width=`${pct}%`; counterEl.textContent=`Question ${idx+1} of ${currentSet.length}`;}
+
+function showResults(){ 
+  quizEnded = true;
+  if(timerInterval) clearInterval(timerInterval); 
+  quizDiv.innerHTML=''; 
+  const out=document.createElement('div'); 
+  out.style.padding='12px'; 
+  out.innerHTML='<h3 style="color:#fff;margin-top:0">Results</h3>'; 
+  let correct=0; 
+  currentSet.forEach((q,i)=>{ 
+    const ua=userAnswers[i]; 
+    const ok=ua===q.answer; 
+    if(ok) correct++; 
+    const row=document.createElement('div'); 
+    row.style.marginBottom='10px'; 
+    row.innerHTML=`<strong style="color:#fff">${i+1}. ${q.question}</strong><div style="margin-top:6px;color:${ok?'#ffd700':'#ff9aa2'}">Your: ${ua?ua:'—'}</div>${ok?'':`<div style="color:#ffd700">Ans: ${q.answer}</div>`}`; 
+    out.appendChild(row); 
+  }); 
+  out.innerHTML+=`<div style="margin-top:12px;color:#dff"><strong>Score: ${correct} / ${currentSet.length}</strong></div>`; 
+  
+  // ⬇️ Add Retake button
+  const retakeBtn = document.createElement('button');
+  retakeBtn.textContent = "Retake Quiz";
+  retakeBtn.style.marginTop = "16px";
+  retakeBtn.className = "small-btn";
+  retakeBtn.addEventListener("click", startQuiz);
+  out.appendChild(retakeBtn);
+
+  quizDiv.appendChild(out); 
+  progressBar.style.width='100%'; 
+  counterEl.textContent=`Done — Score ${correct}/${currentSet.length}`; 
+}
+
+/* auto-start */
+window.addEventListener('load',()=>{ applySettingsToUI(); setTimeout(()=>{ if(!selectsDirty){ startQuiz(); } },120); });
+startBtn.addEventListener('click',startQuiz);
+
+/* ------------------------
+   Theme System
+   ------------------------ */
+const THEMES = {
+  "Neon Night": { "--bg1":"#291c6e","--bg2":"#00167d","--panel":"#12132a","--accent":"#2debb0" },
+  "Sunset Glow": { "--bg1":"#ff7e5f","--bg2":"#feb47b","--panel":"#2e1d12","--accent":"#ffd166" },
+  "Ocean Blue": { "--bg1":"#006994","--bg2":"#003459","--panel":"#012a36","--accent":"#00e5ff" },
+  "Forest Green": { "--bg1":"#1b4332","--bg2":"#081c15","--panel":"#0f5132","--accent":"#95d5b2" },
+  "Royal Purple": { "--bg1":"#3c096c","--bg2":"#240046","--panel":"#10002b","--accent":"#9d4edd" },
+  "Golden Desert": { "--bg1":"#d97706","--bg2":"#92400e","--panel":"#78350f","--accent":"#fcd34d" },
+  "Candy Pink": { "--bg1":"#ff80ab","--bg2":"#ec407a","--panel":"#880e4f","--accent":"#f8bbd0" },
+  "Sky Cyan": { "--bg1":"#00c6ff","--bg2":"#0072ff","--panel":"#012a4a","--accent":"#90e0ef" },
+  "Elegant Gray": { "--bg1":"#2c2c2c","--bg2":"#1a1a1a","--panel":"#111111","--accent":"#bfbfbf" }
+};
+
+const themeSelect = document.getElementById('themeSelect');
+const THEME_KEY = "quiz_theme_choice";
+
+// populate theme dropdown
+Object.keys(THEMES).forEach(name => {
+  const opt = document.createElement("option");
+  opt.value = name;
+  opt.textContent = name;
+  themeSelect.appendChild(opt);
+});
+
+// apply theme (writes CSS variables)
+function applyTheme(name){
+  const theme = THEMES[name] || THEMES["Neon Night"];
+  Object.keys(theme).forEach(key => {
+    document.documentElement.style.setProperty(key, theme[key]);
+  });
+
+    // Update body background gradient which uses --bg1/--bg2
+  document.body.style.background = `radial-gradient(circle at 10% 10%, #06104a 0%, var(--bg1) 25%, var(--bg2) 70%)`;
+
+  localStorage.setItem(THEME_KEY, name);
+}
+
+// load saved theme
+let savedTheme = localStorage.getItem(THEME_KEY) || "Neon Night";
+if (!THEMES[savedTheme]) savedTheme = "Neon Night";
+themeSelect.value = savedTheme;
+applyTheme(savedTheme);
+
+// on change
+themeSelect.addEventListener("change", () => {
+  applyTheme(themeSelect.value);
+});
+</script>
+</body>
+</html>
